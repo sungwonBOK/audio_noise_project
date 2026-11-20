@@ -1,6 +1,8 @@
+import csv
 import hashlib
 import json
 import random
+import re
 from pathlib import Path
 
 import numpy as np
@@ -72,6 +74,26 @@ def sha256(path):
         for block in iter(lambda: f.read(1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
+
+
+# Freesound file names: FSD50K "64760.wav", Freesound download "64760__user__title.wav".
+_FREESOUND_ID = re.compile(r"^(\d+)(?:__|$)")
+
+
+def freesound_id(path):
+    """Freesound sound ID from a file name, or None if the name does not start with one."""
+    m = _FREESOUND_ID.match(Path(path).stem)
+    return str(int(m.group(1))) if m else None
+
+
+def esc50_source_ids(esc_root):
+    """Freesound IDs of ALL 2,000 ESC-50 clips (column src_file), every fold."""
+    meta = Path(esc_root) / "meta" / "esc50.csv"
+    if not meta.is_file():
+        raise FileNotFoundError(f"{meta} (needed to find recordings shared with ESC-50; "
+                                "run download_assets.py --esc50)")
+    with meta.open(encoding="utf-8-sig", newline="") as f:
+        return {str(int(r["src_file"])) for r in csv.DictReader(f)}
 
 
 def load_checkpoint(path):

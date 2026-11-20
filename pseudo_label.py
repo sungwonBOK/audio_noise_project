@@ -12,6 +12,9 @@ Three subcommands:
              <audio-root>/<split>/<class>/ and write one row per window and class:
                1 = teacher prob >= pos_th, 0 = prob < neg_th, -1 = uncertain
              (-1 is ignored by the training loss and by the metrics; a person may overwrite it).
+             Files whose name starts with a Freesound ID that is also an ESC-50 source
+             (any fold) are skipped: ESC-50 and FSD50K both come from Freesound, so the same
+             recording could otherwise sit in training on one side and in evaluation on the other.
 
 Why clean recordings: the teacher is reliable on clean audio (ESC-50 AP 0.94-1.0) and much
 weaker under noise, so labels are made BEFORE noise is mixed in by prepare.py/train.py.
@@ -28,7 +31,7 @@ import soundfile as sf
 import torch
 
 from audio_utils import load_audio, rms, window_intervals
-from common import ROOT, config, sha256, write_json
+from common import ROOT, config, esc50_source_ids, freesound_id, sha256, write_json
 from model import SoundDetector
 
 # AudioSet index per target class (same "strict" mapping as analysis/baseline_pretrained_cnn14.py).
@@ -202,6 +205,14 @@ def find_audio(root, classes):
     return found
 
 
+def drop_esc50_overlap(files, esc_ids):
+    """Split find_audio() results into (kept, dropped): dropped share a Freesound ID with ESC-50."""
+    kept, dropped = [], []
+    for item in files:
+        (dropped if freesound_id(item[2]) in esc_ids else kept).append(item)
+    return kept, dropped
+
+
 def cmd_label(a, cfg):
     out = Path(a.out)
     if out.exists() and any(out.iterdir()):
@@ -214,6 +225,21 @@ def cmd_label(a, cfg):
     if cal["classes"] != classes or cal["window_seconds"] != cfg["window_seconds"]:
         raise SystemExit("Calibration was made for different classes/window; run calibrate again")
     files = find_audio(a.audio_root, classes)
+    try:
+        esc_ids = esc50_source_ids(a.esc50)
+    except FileNotFoundError as e:
+        raise SystemExit(f"ESC-50 metadata missing: {e}")
+    files, overlap = drop_esc50_overlap(files, esc_ids)
+    root = Path(a.audio_root).resolve()
+    overlap = [str(p.relative_to(root)) for _, _, p in overlap]
+    if overlap:
+        print(f"Skipped {len(overlap)} file(s) whose Freesound ID is also an ESC-50 recording:", flush=True)
+        for name in overlap[:20]:
+            print("  ", name)
+        if len(overlap) > 20:
+            print(f"   ... and {len(overlap) - 20} more (full list in meta.json)")
+    if not files:
+        raise SystemExit("No files left after removing ESC-50 overlaps")
     teacher = Teacher(a.weights, a.batch, a.device)
     if teacher.weights_sha256 != cal["teacher_weights_sha256"]:
         raise SystemExit("Calibration belongs to different teacher weights")
@@ -273,6 +299,7 @@ def cmd_label(a, cfg):
                "files": len(file_rows), "windows": len(window_rows),
                "uncertain_windows": sum(r["uncertain"] for r in window_rows),
                "files_needing_review": sum(r["needs_review"] for r in file_rows),
+               "skipped_esc50_overlap": overlap,
                "label_values": "1 present, 0 absent, -1 uncertain (ignored in training/metrics)"})
     print(f"Saved {out}: {len(file_rows)} files, {len(window_rows)} windows, "
           f"{sum(r['needs_review'] for r in file_rows)} files need review")
@@ -287,8 +314,7 @@ def main():
         s.add_argument("--weights", default=str(ROOT / "checkpoints" / "Cnn14_mAP=0.431.pth"))
         s.add_argument("--batch", type=int, default=16)
         s.add_argument("--device", default="auto", help="auto = cuda if available, else cpu")
-        if name in ("calibrate", "check"):
-            s.add_argument("--esc50", default=str(ROOT / "data" / "ESC-50-master"))
+        s.add_argument("--esc50", default=str(ROOT / "data" / "ESC-50-master"))
     c = sub.choices["calibrate"]
     c.add_argument("--out", default=str(DEFAULT_CALIBRATION))
     c.add_argument("--precision", type=float, default=0.95, help="Required precision of label 1")

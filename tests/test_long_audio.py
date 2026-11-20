@@ -13,10 +13,10 @@ import torch
 
 from audio_utils import render_recipe, rms
 from augment import AugmentedRecipeDataset
-from common import ROOT, config
+from common import ROOT, config, freesound_id
 from metrics import scores, tune_thresholds
 from prepare import add_long_rows
-from pseudo_label import apply_thresholds, find_audio, pick_thresholds
+from pseudo_label import apply_thresholds, drop_esc50_overlap, find_audio, pick_thresholds
 from train import masked_bce
 
 SR = 32000
@@ -58,6 +58,31 @@ class TeacherThresholdTests(unittest.TestCase):
             sf.write(bad, np.zeros(SR, np.float32), SR)
             with self.assertRaises(SystemExit):
                 find_audio(root, CLASSES)
+
+
+class Esc50OverlapTests(unittest.TestCase):
+    def test_freesound_id_from_file_name(self):
+        self.assertEqual(freesound_id("data/long_audio/train/siren/64760.wav"), "64760")      # FSD50K
+        self.assertEqual(freesound_id("64760__someuser__siren-passing.flac"), "64760")       # Freesound download
+        self.assertEqual(freesound_id("0123.wav"), "123")
+        self.assertIsNone(freesound_id("street_2026.wav"))
+        self.assertIsNone(freesound_id("64760_take2.wav"))
+
+    def test_label_skips_files_shared_with_esc50(self):
+        files = [("train", "siren", Path("a/100032.wav")), ("test", "siren", Path("b/555.wav")),
+                 ("val", "none", Path("c/my_room.wav"))]
+        kept, dropped = drop_esc50_overlap(files, {"100032"})
+        self.assertEqual([p.name for _, _, p in kept], ["555.wav", "my_room.wav"])
+        self.assertEqual([p.name for _, _, p in dropped], ["100032.wav"])
+
+    def test_real_esc50_ids_are_numeric(self):
+        meta = ROOT / "data" / "ESC-50-master" / "meta" / "esc50.csv"
+        if not meta.is_file():
+            self.skipTest("ESC-50 not downloaded")
+        from common import esc50_source_ids
+        ids = esc50_source_ids(meta.parents[1])
+        self.assertGreater(len(ids), 100)
+        self.assertIn("100032", ids)                                        # 1-100032-A-0.wav
 
 
 class UncertainLabelTests(unittest.TestCase):
@@ -160,6 +185,26 @@ class LongWindowTests(unittest.TestCase):
         self.assertEqual(self.manifest["long_labels"]["dropped_all_uncertain_windows"], 1)
         self.assertEqual(sorted({r["target_start"] for r in self.rows}), [0.0, 10.0, 15.0])
         self.assertEqual({r["kind"] for r in self.rows}, {"clean", "mixed"})
+
+    def test_prepare_refuses_long_file_that_is_an_esc50_recording(self):
+        negative = dict(split="train", kind="negative", noise_group="seen", noise_path=str(self.noise),
+                        noise_source="n", noise_class="rain", labels=[0] * 5)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            shared = tmp / "100032.wav"
+            sf.write(shared, np.full(5 * SR, 0.01, np.float32), SR)
+            w = {"split": "train", "file_class": "siren", "path": str(shared), "start_seconds": 0.0,
+                 "end_seconds": 5.0, "window_rms": 0.01, **{f"label_{c}": 0 for c in CLASSES}}
+            with (tmp / "windows.csv").open("w", newline="", encoding="utf-8-sig") as f:
+                wr = csv.DictWriter(f, fieldnames=list(w))
+                wr.writeheader()
+                wr.writerow(w)
+            (tmp / "meta.json").write_text(json.dumps(
+                {k: CFG[k] for k in ("classes", "window_seconds", "sample_rate")}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "ESC-50 recordings"):
+                add_long_rows({"rows": [dict(negative)]}, tmp, CFG, esc_sources={"100032"})
+            m = add_long_rows({"rows": [dict(negative)]}, tmp, CFG, esc_sources={"999"})
+            self.assertEqual(sum(r.get("source") == "long" for r in m["rows"]), 2)
 
     def test_render_reads_labeled_window_with_file_gain(self):
         clean = {r["target_start"]: r for r in self.rows if r["kind"] == "clean"}

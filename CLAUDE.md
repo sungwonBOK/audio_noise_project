@@ -16,7 +16,7 @@ PANNs Cnn14(AudioSet 사전학습, 32 kHz)를 전이학습해 5초 음원 구간
 ## 실행 환경
 
 - Windows, PowerShell. 파이썬은 항상 `.\.venv\Scripts\python.exe`를 씁니다.
-- 테스트: `.\.venv\Scripts\python.exe -m unittest discover -s tests` (약 30개, 1개 skip, 1분 안팎)
+- 테스트: `.\.venv\Scripts\python.exe -m unittest discover -s tests` (약 35개, 1개 skip, 1분 안팎)
 - `config.json`의 `device`는 `cuda`이고 CPU로 자동 전환하지 않습니다. GPU가 없으면 `--device cpu`.
 - `.gitignore` 대상: `data/ESC-50-master/`(+zip), `data/manifest*.json`, `checkpoints/`, `runs/`, `.venv/`. ESC-50과 가중치는 `download_assets.py --weights --esc50`로 받고, 결과(`runs/`)는 사람에게 zip으로 받습니다.
 - `data/`의 나머지는 git에 포함됩니다: `audioset_class_labels_indices.csv`(pseudo_label.py 필수), `long_audio/`(빈 분류 폴더는 `.gitkeep`으로 유지), `long_audio_labels/`. 긴 음원 파일이 커지면 Git LFS를 검토하세요(GitHub는 100 MB 넘는 파일을 거부).
@@ -32,15 +32,16 @@ PANNs Cnn14(AudioSet 사전학습, 32 kHz)를 전이학습해 5초 음원 구간
 - 라벨 `-1`은 "불확실"입니다. 손실(`train.masked_bce`)과 지표(`metrics.scores`, `tune_thresholds`)에서 제외됩니다. -1을 0이나 1로 바꾸는 코드를 넣지 마세요.
 - 긴 음원 창은 라벨이 그 5초에 묶여 있으므로 증강에서 crop·위치 이동을 하지 않습니다.
 - 학습 원본 분할은 ESC-50 fold 1~3 학습, 4 검증, 5 평가입니다. 같은 원본 녹음이 여러 분할에 들어가면 안 됩니다.
+- 긴 음원(FSD50K·Freesound)은 파일 이름 앞의 Freesound 번호(`common.freesound_id`)가 ESC-50의 `src_file`과 같으면 제외합니다. `pseudo_label.py label`이 건너뛰고, `prepare.add_long_rows`가 한 번 더 막습니다. 이 검사를 끄거나 파일 이름을 바꿔서 우회하지 마세요.
 
 ## 사실과 계획을 구분할 것
 
 구현·실측된 것과 계획을 섞지 마세요. 아래는 **미구현**입니다: 실시간 마이크 검출, RMS 게이트(설계만 있음), RMS 패딩 제외 개선, 두 목표음 중첩, 방향 추정, 안경 연동, 다중 시드 실험. 발표에서 쓸 수 있는 표현은 `docs/EXPERIMENT_LOG.md`를 따르세요.
 
-## 현재 상태 (2026-11-19 기준)
+## 현재 상태 (2026-11-20 기준)
 
 - 본 실험 8모델, 예비 실험 2모델, 사전학습 Cnn14 비교, 층별 분석이 끝났습니다.
-- 긴 클린 음원 경로(`pseudo_label.py` → `prepare.py --long-labels` → `train.py`/`evaluate.py` → `infer.py`)를 구현했고 합성 데이터로 끝까지 돌아가는 것을 확인했습니다. **실제 긴 음원으로는 아직 학습하지 않았습니다.**
+- 긴 클린 음원 경로(`pseudo_label.py` → `prepare.py --long-labels` → `train.py`/`evaluate.py` → `infer.py`)를 구현했고 합성 데이터로 끝까지 돌아가는 것을 확인했습니다. **실제 긴 음원으로는 아직 학습하지 않았습니다.** 긴 음원 후보는 FSD50K이며, ESC-50과 겹치는 Freesound 녹음은 자동으로 제외됩니다.
 - 학습 증강(`augment.py`, `config_augmented.json`)은 구현했지만 본 실험에 쓰지 않았습니다.
 
 ## 남은 과제 (코드 리뷰에서 나온 미수정 항목, 중요한 순서)

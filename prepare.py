@@ -4,7 +4,7 @@ import csv
 import random
 from pathlib import Path
 
-from common import config, read_json, sha256, write_json, ROOT
+from common import config, esc50_source_ids, freesound_id, read_json, sha256, write_json, ROOT
 
 
 def build_manifest(meta_rows, audio_dir, cfg):
@@ -69,12 +69,14 @@ def build_manifest(meta_rows, audio_dir, cfg):
             "notes": "ESC-50 fold split before recipe generation; SNR uses full-window RMS."}
 
 
-def add_long_rows(manifest, labels_dir, cfg):
+def add_long_rows(manifest, labels_dir, cfg, esc_sources=None):
     """Append windows of long CLEAN recordings labeled by pseudo_label.py (labels 1/0/-1).
 
     Per window: one clean row + one mixed row per noise group of that split (train: seen;
     val/test: seen and unseen), noise drawn from the same ESC-50 split pools, SNR from snrs_db.
     One gain per file. Windows whose five labels are all -1 carry no information and are dropped.
+    esc_sources: Freesound IDs of all ESC-50 clips; a long file with one of these IDs is refused
+    (same recording on both sides of the ESC-50 split).
     """
     labels_dir = Path(labels_dir)
     meta = read_json(labels_dir / "meta.json")
@@ -99,6 +101,11 @@ def add_long_rows(manifest, labels_dir, cfg):
     leaked = sorted(n for n, s in names.items() if len(s) > 1)
     if leaked:
         raise ValueError(f"Same file name in several splits (possible leakage): {leaked[:10]}")
+    if esc_sources:
+        shared = sorted(Path(p).name for p in by_file if freesound_id(p) in esc_sources)
+        if shared:
+            raise ValueError(f"{len(shared)} long file(s) are ESC-50 recordings (same Freesound ID), "
+                             f"e.g. {shared[:10]}. Remove them and run pseudo_label.py label again.")
     pools = {}
     for r in manifest["rows"]:
         if r["kind"] == "negative":
@@ -153,7 +160,7 @@ def main():
     cfg = config(a.config)
     m = build_manifest(meta, root / "audio", cfg)
     if a.long_labels:
-        m = add_long_rows(m, a.long_labels, cfg)
+        m = add_long_rows(m, a.long_labels, cfg, esc50_source_ids(root))
     write_json(a.out, m)
     for split in ("train", "val", "test"):
         rows = [r for r in m["rows"] if r["split"] == split]

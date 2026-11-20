@@ -93,7 +93,7 @@ audio_noise_project/
 
 ### 데이터 흐름
 
-- **준비**: ESC-50 메타데이터 → 원본 단위 분할(fold 1~3 학습, 4 검증, 5 평가) → 혼합 recipe를 담은 manifest. 긴 음원은 `pseudo_label.py` → 사람 확인 → `prepare.py --long-labels`로 창 단위 행을 추가합니다.
+- **준비**: ESC-50 메타데이터 → 원본 단위 분할(fold 1~3 학습, 4 검증, 5 평가) → 혼합 recipe를 담은 manifest. 긴 음원은 `pseudo_label.py` → 사람 확인 → `prepare.py --long-labels`로 창 단위 행을 추가합니다. 파일 이름의 Freesound 번호가 ESC-50 녹음(전체 2,000개)과 같은 긴 음원은 두 단계 모두에서 제외합니다. FSD50K도 Freesound에서 왔기 때문에 같은 녹음이 학습과 평가 양쪽에 들어가는 것을 막기 위해서입니다.
 - **학습**: `RecipeDataset` → `render_recipe()` → `[batch, 160000]` 파형 → Cnn14 → `[batch, 5]` logits → masked BCE(-1 라벨 제외).
 - **평가**: 최종 모델 → sigmoid 점수 → 검증에서 고른 소리별 기준 → 지표. -1 라벨 칸은 지표에서도 제외합니다.
 - **파일 추론**: 5초 구간을 기본 1초 간격으로 이동 → (선택) RMS 검사 → Cnn14 → 구간별 CSV/JSON. 시간값은 분석 구간이지 사건의 정확한 경계가 아닙니다.
