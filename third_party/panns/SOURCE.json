@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/qiuqiangkong/panns_inference",
+  "revision": "f673f604ec6f4805a61c5b3be087e24776ec5fda",
+  "sha256": {
+    "models.py": "91f99e879bd42d93850f819914086dd1167f1067f26550a0561f25c4eefa157f",
+    "pytorch_utils.py": "8a97dcec4d8dfa1f3ceb93de909c8ffe78828350ab011f18c2518659e687a5eb",
+    "LICENSE": "ebf680a8816f15b367981f48d461369a9848a29c9ce644c249bbcbaa4831a01f"
+  }
+}

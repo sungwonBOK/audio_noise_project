@@ -1,0 +1,58 @@
+{
+  "dataset": "ESC-50",
+  "source": "https://github.com/karolpiczak/ESC-50",
+  "archive_sha256": "805afc618aff80eff0641d51311647871fead5807da68bb18e43a27db47a79ce",
+  "archive_bytes": 645695005,
+  "manifest_sha256": "6cf5b96060c27e3375a5a4cb0d367e812d0f3608a72337b30f8d517f10ce4700",
+  "wav_files": 2000,
+  "classes": 50,
+  "audio_formats": {
+    "44100Hz/1ch/5.0s": 2000
+  },
+  "zip_crc_check": "passed",
+  "all_files_decoded": "passed",
+  "all_recipes_rendered": "passed",
+  "cross_split_source_leakage": "none",
+  "splits": {
+    "train": {
+      "recipe_windows": 636,
+      "kinds": {
+        "clean": 120,
+        "mixed": 360,
+        "negative": 144,
+        "silence": 12
+      },
+      "target_original_files": 120,
+      "noise_original_files": 144,
+      "target_source_recordings": 96,
+      "noise_source_recordings": 115
+    },
+    "val": {
+      "recipe_windows": 356,
+      "kinds": {
+        "clean": 40,
+        "mixed": 240,
+        "negative": 64,
+        "silence": 12
+      },
+      "target_original_files": 40,
+      "noise_original_files": 64,
+      "target_source_recordings": 31,
+      "noise_source_recordings": 50
+    },
+    "test": {
+      "recipe_windows": 356,
+      "kinds": {
+        "clean": 40,
+        "mixed": 240,
+        "negative": 64,
+        "silence": 12
+      },
+      "target_original_files": 40,
+      "noise_original_files": 64,
+      "target_source_recordings": 29,
+      "noise_source_recordings": 56
+    }
+  },
+  "limitation": "Automated integrity checks do not replace listening to confirm target labels and absence of other target sounds."
+}

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+checkpoints/
+runs/
+*.part
+
+# data/ is tracked (AudioSet label list, long audio, teacher labels).
+# ESC-50 (~1.4 GB) is re-downloaded with `download_assets.py --esc50`.
+data/ESC-50-master/
+data/ESC-50-master.zip
+# Manifests hold absolute paths of one PC; regenerate with prepare.py.
+data/manifest*.json
