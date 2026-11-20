@@ -32,6 +32,7 @@ PANNs Cnn14(AudioSet 사전학습, 32 kHz)를 전이학습해 5초 음원 구간
 - 정규 학습·평가에서 한 창에 목표음은 최대 한 종류입니다. 예외는 긴 음원 행(`source: "long"`)뿐입니다.
 - 라벨 `-1`은 "불확실"입니다. 손실(`train.masked_bce`)과 지표(`metrics.scores`, `tune_thresholds`)에서 제외됩니다. -1을 0이나 1로 바꾸는 코드를 넣지 마세요.
 - 긴 음원 창은 라벨이 그 5초에 묶여 있으므로 증강에서 crop·위치 이동을 하지 않습니다.
+- `evaluate.py`의 `test_multi`는 `val_multi`에서 고른 기준만, `test`는 `val`에서 고른 기준만 받습니다.
 - 학습 원본 분할은 ESC-50 fold 1~3 학습, 4 검증, 5 평가입니다. 같은 원본 녹음이 여러 분할에 들어가면 안 됩니다.
 - 긴 음원(FSD50K·Freesound)은 파일 이름 앞의 Freesound 번호(`common.freesound_id`)가 ESC-50의 `src_file`과 같으면 제외합니다. `pseudo_label.py label`이 건너뛰고, `prepare.add_long_rows`가 한 번 더 막습니다. 이 검사를 끄거나 파일 이름을 바꿔서 우회하지 마세요.
 
@@ -42,20 +43,23 @@ PANNs Cnn14(AudioSet 사전학습, 32 kHz)를 전이학습해 5초 음원 구간
 ## 현재 상태 (2026-11-20 기준)
 
 - 본 실험 8모델, 예비 실험 2모델, 사전학습 Cnn14 비교, 층별 분석이 끝났습니다.
-- 긴 클린 음원 경로(`pseudo_label.py` → `prepare.py --long-labels` → `train.py`/`evaluate.py` → `infer.py`)를 구현했고 합성 데이터로 끝까지 돌아가는 것을 확인했습니다. **실제 긴 음원으로는 아직 학습하지 않았습니다.** 긴 음원 후보는 FSD50K이며, ESC-50과 겹치는 Freesound 녹음은 자동으로 제외됩니다.
+- 긴 클린 음원 경로(`pseudo_label.py` → `prepare.py --long-labels` → `train.py`/`evaluate.py` → `infer.py`)를 구현했고 합성 데이터로 끝까지 돌아가는 것을 확인했습니다. ESC-50과 겹치는 Freesound 녹음은 자동으로 제외됩니다.
+- 2026-11-20 Colab(T4)에서 실제 FSD50K로 한 번 학습했습니다. 5종(경적=Vehicle_horn…, 사이렌=Siren, 노크=Knock, 울음=Crying_and_sobbing, 깨짐=Shatter) 1,248파일, 분할은 FSD50K dev-train/dev-val/eval → train/val/test, SNR 수정 후 mixed 1모델(`runs/colab_long_02`), test macro-F1 0.877. 받기 스크립트는 `fetch_fsd50k.py`(저장소 포함), **결과·음원은 저장소에 없고 Drive의 `colab_results_20261120.zip`에 있습니다. test 라벨은 선생님 라벨이며 사람 확인 전이라 발표 수치로 쓰지 마세요.** FSD50K에는 아기 울음 전용 클래스가 없어 어른 울음이 섞여 있습니다.
 - 학습 증강(`augment.py`, `config_augmented.json`)은 구현했지만 본 실험에 쓰지 않았습니다.
+- 방해음 여러 개 겹치기(`multi_noise.py`, README 13절)를 구현하고 테스트했습니다. **아직 학습하지 않았습니다.** 다음 단계(2단계)는 지속 배경층(DEMAND 등 환경 소음)을 추가하는 것입니다. 1단계 결과를 보고 진행합니다.
 
 ## 남은 과제 (코드 리뷰에서 나온 미수정 항목, 중요한 순서)
 
-1. **긴 음원 SNR 기준**: `audio_utils.render_long_window`와 `augment.render_augmented`의 긴 음원 분기가 소음 크기를 창 자신이 아니라 **파일에서 가장 큰 창** 기준으로 정합니다. 목표음이 작은 창은 이름상 0 dB여도 훨씬 낮은 SNR로 묻히는데 라벨은 1로 남습니다. 수정안: 라벨이 1인 창은 창 자신의 RMS를 SNR 기준으로 씁니다.
-2. `pseudo_label.find_audio`는 `.wav/.flac/.ogg/.mp3` 외 형식(.m4a 등)을 **경고 없이 건너뜁니다**.
-3. `prepare.add_long_rows`는 `windows.csv`를 utf-8-sig로만 읽습니다. 한국어 엑셀이 cp949로 저장하면 한글 경로에서 깨집니다.
-4. `windows.csv`의 `path`가 절대경로라 다른 PC로 옮기면 수동 수정한 라벨을 쓸 수 없습니다. `--audio-root` 기준 상대경로로 바꾸는 것이 좋습니다.
-5. "같은 파일 이름이 여러 split에 있음" 검사가 이름만 같은 다른 녹음을 막고, 이름을 바꾼 같은 녹음은 놓칩니다(내용 해시 검사 권장).
-6. `pseudo_label label`은 결과를 마지막에 한 번에 씁니다. 중간에 깨진 파일 하나로 전체가 실패하고, 창이 하나도 없으면 `rows[0]`에서 IndexError가 납니다.
-7. `label_report`가 NaN을 낼 수 있는데 `write_json(allow_nan=False)`에서 오류가 납니다.
-8. `source == "long"` 분기가 여러 파일에 흩어져 있습니다(정리 대상).
-9. 라벨링할 때 겹치는 창을 따로 읽고 리샘플링해서 같은 구간을 두 번씩 처리합니다(효율).
+1. `pseudo_label.find_audio`는 `.wav/.flac/.ogg/.mp3` 외 형식(.m4a 등)을 **경고 없이 건너뜁니다**.
+2. `prepare.add_long_rows`는 `windows.csv`를 utf-8-sig로만 읽습니다. 한국어 엑셀이 cp949로 저장하면 한글 경로에서 깨집니다.
+3. `windows.csv`의 `path`가 절대경로라 다른 PC로 옮기면 수동 수정한 라벨을 쓸 수 없습니다. `--audio-root` 기준 상대경로로 바꾸는 것이 좋습니다.
+4. "같은 파일 이름이 여러 split에 있음" 검사가 이름만 같은 다른 녹음을 막고, 이름을 바꾼 같은 녹음은 놓칩니다(내용 해시 검사 권장).
+5. `pseudo_label label`은 결과를 마지막에 한 번에 씁니다. 중간에 깨진 파일 하나로 전체가 실패하고, 창이 하나도 없으면 `rows[0]`에서 IndexError가 납니다.
+6. `label_report`가 NaN을 낼 수 있는데 `write_json(allow_nan=False)`에서 오류가 납니다.
+7. `source == "long"` 분기가 여러 파일에 흩어져 있습니다(정리 대상).
+8. 라벨링할 때 겹치는 창을 따로 읽고 리샘플링해서 같은 구간을 두 번씩 처리합니다(효율).
+
+해결됨(2026-11-20): 긴 음원 SNR 기준. 예전에는 소음 크기를 파일에서 가장 큰 창에 맞춰, 목표음이 작은 양성 창이 이름상 SNR보다 훨씬 낮게 묻혔습니다(FSD50K 5종 실측: 양성 창의 12.6%가 6 dB 넘게, 6.4%가 10 dB 넘게 낮음). 지금은 `audio_utils.long_noise_reference`가 라벨 1이 있는 창은 그 창의 RMS를, 0·-1만 있는 창은 파일 기준을 씁니다. 고정 recipe(`render_long_window`)와 증강(`augment.render_augmented`)이 같은 함수를 씁니다. 이전 코드로 만든 긴 음원 학습 결과와는 섞어 비교하지 마세요.
 
 고친 뒤에는 테스트를 다시 돌리고, `tests/test_long_audio.py`에 해당 경우를 추가하세요.
 

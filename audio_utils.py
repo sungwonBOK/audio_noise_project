@@ -102,10 +102,30 @@ def render_long_window(row, cfg, mode="mixed"):
     return limit_peak(x)
 
 
+def noise_bed(primary, extras, sr, seconds):
+    """Primary noise at its own level plus extra noises (multi_noise.py rows).
+
+    Each extra is scaled to RMS(primary) * 10^(gain_db/20) over the full window, then summed.
+    With no extras this returns the primary unchanged, so old recipes render bit-identically.
+    """
+    bed = primary.copy()
+    ref = rms(primary)
+    for e in extras:
+        x = load_audio(e["path"], sr, seconds)
+        r = rms(x)
+        if min(ref, r) < 1e-10:
+            raise ValueError(f"Cannot add a silent extra noise: {e['path']}")
+        bed = bed + x * (ref * 10 ** (e["gain_db"] / 20) / r)
+    return bed
+
+
 def render_recipe(row, cfg, mode="mixed"):
     sr, seconds = cfg["sample_rate"], cfg["window_seconds"]
     n = round(sr * seconds)
+    extras = row.get("extra_noises") or []
     if row.get("source") == "long":
+        if extras:
+            raise ValueError("extra_noises is not supported for long-recording rows")
         return render_long_window(row, cfg, mode)
     if row["kind"] == "silence":
         return np.zeros(n, dtype=np.float32)
@@ -115,9 +135,11 @@ def render_recipe(row, cfg, mode="mixed"):
             raise ValueError(f"Silent target: {row['target_path']}")
         x = x * (row["target_rms"] / rms(x))
         if row["kind"] == "mixed" and mode == "mixed":
-            noise = load_audio(row["noise_path"], sr, seconds)
+            noise = noise_bed(load_audio(row["noise_path"], sr, seconds), extras, sr, seconds)
+            # SNR = target vs the WHOLE noise bed (all noises together), full-window RMS.
             return mix_at_snr(x, noise, row["snr_db"])
-    return limit_peak(x)
+        return limit_peak(x)
+    return limit_peak(noise_bed(x, extras, sr, seconds))
 
 
 def resolve_path(value):

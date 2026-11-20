@@ -94,6 +94,8 @@ def main():
     if any(r.get("source") != "long" and sum(r["labels"]) > 1 for r in manifest["rows"]):
         raise ValueError("Overlapping TARGET classes are outside this project's training/evaluation scope")
     augment = augment_settings(cfg)
+    if augment["enabled"] and any(r.get("extra_noises") for r in manifest["rows"]):
+        raise ValueError("augment.py re-mixes a single noise and would drop extra_noises; disable augment")
     loaders = {}
     for split in ("train", "val"):
         rows = [r for r in manifest["rows"] if r["split"] == split]

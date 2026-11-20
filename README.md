@@ -43,10 +43,12 @@ audio_noise_project/
   requirements.txt                   설치용 의존성 범위
   requirements-cuda-lock.txt         실제 CUDA 실행 환경의 버전 기록
   download_assets.py                 PANNs 소스 확인, ESC-50·사전학습 가중치 다운로드
+  fetch_fsd50k.py                    FSD50K에서 목표음 5종 클립만 data/long_audio/로 받기 (PLAY.md 1단계)
 
   # 데이터 준비
   prepare.py                         ESC-50 원본 분할·혼합 recipe → manifest (--long-labels로 긴 음원 창 추가)
   noise_expansion.py                 본 실험 4단계 데이터 구성과 학습·검증·평가 일괄 실행
+  multi_noise.py                     한 구간에 방해음 여러 개를 겹치는 실험 (13절)
   pseudo_label.py                    원본 AudioSet Cnn14로 긴 음원 5초 창 자동 라벨링 (PLAY.md)
   audio_utils.py                     파형 읽기·리샘플링·패딩·혼합·RMS, recipe → 파형
   augment.py                         학습 전용 증강 (매 epoch 재혼합, 위치 이동, SpecAugment 등)
@@ -188,7 +190,7 @@ py -3.11 -m venv .venv
   !cp runs/colab_01_results.zip /content/drive/MyDrive/
   ```
 - `runs/`는 저장소에 없으므로 긴 음원 작업 전에 `!python pseudo_label.py calibrate`를 한 번 돌립니다.
-- 소리 섞기를 CPU에서 매번 하므로(`num_workers: 0`) 내 PC보다 느릴 수 있습니다. 처음에는 기본 2모델(6절)로 시험해 보세요.
+- 소리 섞기를 CPU에서 매번 하므로(`num_workers: 0`) 내 PC보다 느릴 수 있습니다. 처음에는 기본 2모델(6절)이나 방해음 여러 개 실험(13절, 2모델)으로 시험해 보세요.
 
 ## 6. 실행 방법
 
@@ -308,7 +310,7 @@ CSV의 리스트 점수는 Python literal 형식이므로 `ast.literal_eval`로 
 
 주의:
 
-- `pseudo_label.py`로 라벨을 붙인 긴 음원 창(`source: "long"` 행)은 라벨이 그 창에 묶여 있으므로 crop·위치 이동을 하지 않습니다. 음량과 방해음만 다시 뽑습니다.
+- `pseudo_label.py`로 라벨을 붙인 긴 음원 창(`source: "long"` 행)은 라벨이 그 창에 묶여 있으므로 crop·위치 이동을 하지 않습니다. 음량과 방해음만 다시 뽑습니다. SNR 기준은 고정 recipe와 같습니다(라벨 1이 있는 창은 그 창의 RMS, 없는 창은 파일 기준).
 - 라벨 없이 train 행에 긴 파일을 직접 넣으면 crop이 적용되는데, 이때는 "목표음이 그 녹음에서 가장 큰 소리"라고 가정합니다.
 - 원본 반복 횟수가 달라지므로 기존 실험과 비교할 때는 epoch 수와 업데이트 수를 함께 보고하세요.
 
@@ -350,3 +352,25 @@ CSV의 리스트 점수는 Python literal 형식이므로 `ast.literal_eval`로 
 ```powershell
 .\.venv\Scripts\python.exe presentation_assets.py --experiment "runs/noise_expansion_augmented_01" --out "runs/noise_expansion_augmented_01/presentation_v2"
 ```
+
+## 13. 방해음 여러 개 겹치기 (`multi_noise.py`)
+
+실생활처럼 소음이 여러 개 동시에 있는 상황의 1단계입니다. 결과는 아직 없습니다(코드와 테스트만 완료).
+
+- 학습 2모델(둘 다 mixed 방식, 본 실험 43종 단계와 같은 학습 행):
+  - `single`: 본 실험 `noise_43/mixed`와 같은 데이터(구간당 방해음 1개). 비교 기준.
+  - `multi`: 같은 학습 행에서 혼합 구간과 방해음 단독 구간에 방해음을 1~3개로 겹칩니다(`train_noise_counts`). 방해음 단독 구간도 겹치므로 "소리가 많으면 목표음이 있다"는 지름길을 배우지 않습니다.
+- 평가 2종(기준은 항상 짝이 되는 검증 분할에서만 고름):
+  - `val` → `test`: 구간당 방해음 1개. 본 실험과 같은 평가셋입니다(`plan.json`의 `same_val_test_as_main_experiment`, 경로를 뺀 내용 비교).
+  - `val_multi` → `test_multi`: 같은 검증·평가 구간에 방해음을 2~3개 겹친 것(`eval_noise_counts`). 학습하지 않는 방해음 2종(`heldout_types`)은 종류가 2개뿐이라 최대 2개입니다.
+- 추가 방해음은 같은 분할·같은 그룹에서 서로 다른 종류, 다른 원본 녹음만 고릅니다. 크기는 첫 방해음 대비 -6~0 dB(`extra_gain_db`)입니다.
+- **SNR은 목표음 대 방해음 전체(합친 것)의 5초 RMS 비**입니다. 방해음이 3개여도 SNR 0 dB이면 방해음 합의 에너지가 목표음과 같습니다.
+- 설정은 `config.json`에 `"multi_noise": {...}`를 넣어 바꿉니다. 없으면 위 기본값을 씁니다. 학습 증강(`augment`)과 같이 쓰면 오류를 냅니다(증강은 방해음을 하나만 다시 섞기 때문).
+
+```powershell
+.\.venv\Scripts\python.exe multi_noise.py --out runs/multi_noise_01 --prepare-only
+.\.venv\Scripts\python.exe multi_noise.py --out runs/multi_noise_01 --run-prepared
+```
+
+Colab에서는 `!python multi_noise.py --out runs/multi_noise_01 --prepare-only` 다음 `--run-prepared`. 끝나면 `summary.csv`에 4가지(학습 2 × 평가 2) Macro-F1과 목표음 없는 구간 오검출 수가, `report.json`의 `noise_count/2`, `noise_count/3`에 방해음 개수별 점수가 나옵니다.
+
