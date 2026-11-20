@@ -18,6 +18,7 @@ PANNs Cnn14(AudioSet 사전학습, 32 kHz)를 전이학습해 5초 음원 구간
 - Windows, PowerShell. 파이썬은 항상 `.\.venv\Scripts\python.exe`를 씁니다.
 - 테스트: `.\.venv\Scripts\python.exe -m unittest discover -s tests` (약 35개, 1개 skip, 1분 안팎)
 - `config.json`의 `device`는 `cuda`이고 CPU로 자동 전환하지 않습니다. GPU가 없으면 `--device cpu`.
+- Google Colab(Linux)에서도 동작합니다. 명령은 `!python ...`, 절차는 README 5절 D. 그래프 글꼴은 `plot_fonts.korean_font_family()`만 쓰고 OS별 경로를 코드에 직접 넣지 마세요.
 - `.gitignore` 대상: `data/ESC-50-master/`(+zip), `data/manifest*.json`, `checkpoints/`, `runs/`, `.venv/`. ESC-50과 가중치는 `download_assets.py --weights --esc50`로 받고, 결과(`runs/`)는 사람에게 zip으로 받습니다.
 - `data/`의 나머지는 git에 포함됩니다: `audioset_class_labels_indices.csv`(pseudo_label.py 필수), `long_audio/`(빈 분류 폴더는 `.gitkeep`으로 유지), `long_audio_labels/`. 긴 음원 파일이 커지면 Git LFS를 검토하세요(GitHub는 100 MB 넘는 파일을 거부).
 

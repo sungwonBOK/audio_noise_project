@@ -6,7 +6,8 @@ from sklearn.metrics import average_precision_score,precision_recall_curve
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
+
+from plot_fonts import korean_font_family
 
 ROOT=Path(__file__).resolve().parent
 CLASSES=['car_horn','siren','door_wood_knock','crying_baby','glass_breaking']
@@ -110,8 +111,7 @@ def analyze(run,out):
  return summary,data,sweeps
 
 def plots(out,summary,data,sweeps):
- font_manager.fontManager.addfont(r'C:\Windows\Fonts\malgun.ttf')
- plt.rcParams.update({'font.family':'Malgun Gothic','font.size':9,'axes.unicode_minus':False,'axes.titlesize':10,'axes.labelsize':9,'xtick.labelsize':8,'ytick.labelsize':8,'legend.fontsize':8,'lines.linewidth':1.5})
+ plt.rcParams.update({'font.family':korean_font_family(),'font.size':9,'axes.unicode_minus':False,'axes.titlesize':10,'axes.labelsize':9,'xtick.labelsize':8,'ytick.labelsize':8,'legend.fontsize':8,'lines.linewidth':1.5})
  fg=out/'figures';fg.mkdir(exist_ok=True)
  colors={'clean':'#246BA0','mixed':'#D46224'};labels={'clean':'깨끗한 학습','mixed':'혼합 학습'}
  def finish(fig,name):fig.savefig(fg/name,dpi=220);plt.close(fig)

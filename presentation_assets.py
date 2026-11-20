@@ -28,11 +28,11 @@ import soundfile as sf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 
 from audio_utils import load_audio, rms, limit_peak, render_recipe
 from common import ROOT, read_json, write_json
 from metrics import scores
+from plot_fonts import korean_font_family
 
 SNR_ORDER = ["clean", 10, 5, 0]
 SNR_LABEL = {"clean": "깨끗한 소리", 10: "SNR 10 dB", 5: "SNR 5 dB", 0: "SNR 0 dB"}
@@ -41,12 +41,7 @@ GROUP_LABEL = {"candidate_pool": "학습 후보 방해음", "heldout_types": "�
 
 # ----------------------------------------------------------------------------- loading
 def setup_fonts():
-    font = Path(r"C:\Windows\Fonts\malgun.ttf")
-    family = "DejaVu Sans"
-    if font.is_file():
-        font_manager.fontManager.addfont(str(font))
-        family = "Malgun Gothic"
-    plt.rcParams.update({"font.family": family, "font.size": 9, "axes.unicode_minus": False,
+    plt.rcParams.update({"font.family": korean_font_family(), "font.size": 9, "axes.unicode_minus": False,
                          "axes.titlesize": 10, "figure.dpi": 100})
 
 

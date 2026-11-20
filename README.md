@@ -63,6 +63,7 @@ audio_noise_project/
   plot_noise_expansion.py            본 실험 8모델 취합과 29개 그래프
   analyze_sigmoid.py                 저장 점수의 분포·SNR·PR·기준 변화 분석
   presentation_assets.py             발표용 예시 음원·판정 카드·그래프 (12절)
+  plot_fonts.py                      그래프용 한글 글꼴 찾기 (Windows 맑은 고딕, Colab 나눔고딕, macOS)
   analysis/baseline_pretrained_cnn14.py  학습 없는 사전학습 Cnn14와 우리 모델 비교
   analysis/layer_intuition.py        Cnn14 층별 특징 분석 그림
   tools/pack_results.py              실험 결과 폴더를 공유용 zip으로 묶기 (.pt 제외)
@@ -166,6 +167,28 @@ py -3.11 -m venv .venv
 ```
 
 `data/ESC-50-master/`와 `checkpoints/Cnn14_mAP=0.431.pth`가 생깁니다. **사전학습 가중치는 5종 검출 모델이 아닙니다.** 바로 추론하려면 작성자에게 `best.pt`와 그에 맞는 `thresholds.json`을 받거나 재학습해야 합니다.
+
+### D. Google Colab에서 실행
+
+런타임 → 런타임 유형 변경 → **GPU**를 먼저 고릅니다. 명령은 `.\.venv\Scripts\python.exe` 대신 `!python`으로 씁니다. `requirements-cuda-lock.txt`는 Windows용이라 쓰지 않습니다.
+
+```python
+!git clone https://github.com/sungwonBOK/audio_noise_project.git
+%cd audio_noise_project
+!pip install -q -r requirements.txt
+!apt-get -qq install -y fonts-nanum          # 그래프의 한글 글꼴 (없으면 한글이 네모로 나옴)
+!python download_assets.py --weights --esc50
+!python -c "import torch; print(torch.cuda.get_device_name(0))"
+```
+
+- Colab은 연결이 끊기면 `/content`가 지워집니다. 학습이 끝나면 결과를 Drive로 옮기세요. 아래는 6절의 본 실험을 `--out runs/colab_01`로 돌린 경우입니다. `--include-model`을 빼면 `best.pt`가 빠져 나중에 추론할 수 없습니다.
+  ```python
+  from google.colab import drive; drive.mount('/content/drive')
+  !python tools/pack_results.py --experiment runs/colab_01 --include-model noise_43/mixed
+  !cp runs/colab_01_results.zip /content/drive/MyDrive/
+  ```
+- `runs/`는 저장소에 없으므로 긴 음원 작업 전에 `!python pseudo_label.py calibrate`를 한 번 돌립니다.
+- 소리 섞기를 CPU에서 매번 하므로(`num_workers: 0`) 내 PC보다 느릴 수 있습니다. 처음에는 기본 2모델(6절)로 시험해 보세요.
 
 ## 6. 실행 방법
 
