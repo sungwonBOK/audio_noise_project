@@ -38,7 +38,8 @@ What is randomized per presentation
    pseudo_label.py + prepare.py --long-labels) already carry WINDOW labels, so they
    are never re-cropped or time-shifted (the label belongs to that exact window).
    They still get a fresh gain, noise, SNR and partial overlap every epoch; the noise
-   level is set against the file's target level (see audio_utils.render_long_window).
+   level follows audio_utils.long_noise_reference (the window's own RMS if a target is
+   labeled 1, else the file's target level).
 """
 import math
 from functools import lru_cache
@@ -48,7 +49,7 @@ import soundfile as sf
 import torch
 from torch.utils.data import Dataset
 
-from audio_utils import load_audio, rms, limit_peak, max_frame_dbfs
+from audio_utils import load_audio, rms, limit_peak, long_noise_reference, max_frame_dbfs
 
 DEFAULTS = {
     "enabled": False,
@@ -236,7 +237,7 @@ def render_augmented(row, slot, cfg, s, mode, rng, noise_pool):
                                sr, seconds, rng, s)
             info.update(noise_path=noise_path, snr_db=float(rng.uniform(*s["snr_range_db"])))
             wave, info["noise_span"] = mix_noise(x, loop_to_length(raw, rng, s, n), info["snr_db"],
-                                                 rng, s, reference=level)
+                                                 rng, s, reference=long_noise_reference(row, x, level))
             return wave, info
         return limit_peak(x), info
     if row["kind"] == "silence":

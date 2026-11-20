@@ -71,17 +71,34 @@ def noise_at_level(noise, level, snr_db):
     return noise * (level / (rn * 10 ** (snr_db / 20)))
 
 
+def long_noise_reference(row, x, file_level):
+    """RMS the noise of a long-recording window is set against (SNR = this level vs noise).
+
+    A window with any target labeled 1 uses its OWN RMS (x = the window after the file gain), so
+    snr_db is the real SNR of that labeled event; against the file's loudest window, a quiet
+    event would sit far below its nominal SNR while keeping label 1. Windows with only 0/-1
+    labels keep the file-level target level, so their background stays at the file's level.
+    A near-silent positive window (RMS < 1e-6) also falls back to the file level.
+    """
+    if any(v == 1 for v in row["labels"]):
+        own = rms(x)
+        if own >= 1e-6:
+            return own
+    return file_level
+
+
 def render_long_window(row, cfg, mode="mixed"):
     """One window of a long clean recording (rows made by prepare.py --long-labels).
 
-    The whole file shares one gain (its loudest labeled window -> target_rms), and the noise
-    level is set against that file-level target level, not against this window: background
-    noise stays constant while the target event comes and goes, and event-free windows work.
+    The whole file shares one gain (its loudest labeled window -> target_rms). The noise level
+    follows long_noise_reference: the window's own RMS if a target is labeled 1, else the
+    file-level target level.
     """
     sr, seconds = cfg["sample_rate"], cfg["window_seconds"]
     x = load_audio(row["target_path"], sr, seconds, row["target_start"]) * (row["target_rms"] / row["ref_rms"])
     if row["kind"] == "mixed" and mode == "mixed":
-        x = x + noise_at_level(load_audio(row["noise_path"], sr, seconds), row["target_rms"], row["snr_db"])
+        level = long_noise_reference(row, x, row["target_rms"])
+        x = x + noise_at_level(load_audio(row["noise_path"], sr, seconds), level, row["snr_db"])
     return limit_peak(x)
 
 

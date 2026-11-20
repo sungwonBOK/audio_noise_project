@@ -150,6 +150,7 @@ class LongWindowTests(unittest.TestCase):
         x = np.full(20 * SR, 0.001, np.float32)
         t = np.arange(SR) / SR
         x[12 * SR:13 * SR] = 0.2 * np.sin(2 * np.pi * 800 * t)      # event at 12-13 s (no limiter clipping)
+        x[17 * SR:18 * SR] = 0.02 * np.sin(2 * np.pi * 800 * t)     # 20 dB quieter event at 17-18 s
         cls.long = root / "audio" / "train" / "siren" / "street.wav"
         cls.long.parent.mkdir(parents=True)
         sf.write(cls.long, x, SR, subtype="FLOAT")
@@ -158,7 +159,7 @@ class LongWindowTests(unittest.TestCase):
         cls.labels_dir = root / "labels"
         cls.labels_dir.mkdir()
         windows = []
-        for start, label in ((0.0, 0), (5.0, -1), (10.0, 1), (15.0, 0)):
+        for start, label in ((0.0, 0), (5.0, -1), (10.0, 1), (15.0, 1)):
             w = {"split": "train", "file_class": "siren", "path": str(cls.long), "start_seconds": start,
                  "end_seconds": start + 5, "window_rms": rms(x[int(start * SR):int((start + 5) * SR)])}
             for c in CLASSES:
@@ -215,16 +216,53 @@ class LongWindowTests(unittest.TestCase):
         self.assertLess(rms(quiet), rms(event) / 20)                              # quiet window stays quiet
         self.assertGreater(np.abs(event[2 * SR:3 * SR]).max(), 0.1)               # 12-13 s is at 2-3 s
 
-    def test_noise_level_is_set_against_file_target_level(self):
+    def test_noise_level_follows_window_if_positive_else_file(self):
+        checked = set()
         for r in self.rows:
             if r["kind"] != "mixed":
                 continue
             clean = render_recipe({**r, "kind": "clean"}, CFG)
             mixed = render_recipe(r, CFG)
-            if np.abs(mixed).max() >= 0.95:
-                continue
-            expected = r["target_rms"] / 10 ** (r["snr_db"] / 20)
-            self.assertAlmostEqual(rms(mixed - clean), expected, places=4)
+            self.assertLess(np.abs(mixed).max(), 0.95)                 # limiter off -> exact levels
+            reference = rms(clean) if 1 in r["labels"] else r["target_rms"]
+            self.assertAlmostEqual(rms(mixed - clean), reference / 10 ** (r["snr_db"] / 20), places=5)
+            checked.add(r["target_start"])
+        self.assertEqual(checked, {0.0, 10.0, 15.0})
+
+    def test_quiet_positive_window_keeps_its_nominal_snr(self):
+        # Window 15-20 s holds a labeled event 20 dB below the file's loudest window (10-15 s).
+        # Its noise must follow that event, not the file level (which would bury it 20 dB deeper).
+        r = next(r for r in self.rows if r["kind"] == "mixed" and r["target_start"] == 15.0)
+        clean = render_recipe({**r, "kind": "clean"}, CFG)
+        noise = render_recipe(r, CFG) - clean
+        self.assertAlmostEqual(20 * np.log10(rms(clean) / rms(noise)), r["snr_db"], places=3)
+        self.assertLess(rms(clean), r["target_rms"] / 5)                   # really a quiet window
+
+    def test_augmented_long_window_uses_same_noise_reference(self):
+        import augment
+        cfg = {**CFG, "augment": {"enabled": True}}
+        ds = AugmentedRecipeDataset(self.manifest["rows"], cfg, "mixed")
+        seen = []
+        original = augment.mix_noise
+
+        def spy(target, noise_bed, snr_db, rng, s, reference=None):
+            seen.append((rms(target), reference))
+            return original(target, noise_bed, snr_db, rng, s, reference=reference)
+
+        augment.mix_noise = spy
+        try:
+            for i, (row_index, _, _) in enumerate(ds.slots):
+                r = ds.rows[row_index]
+                if r.get("source") == "long" and r["kind"] == "mixed":
+                    seen.clear()
+                    ds.render(i)
+                    (window_rms, reference), = seen
+                    if 1 in r["labels"]:
+                        self.assertAlmostEqual(reference, window_rms, places=6)
+                    else:
+                        self.assertGreater(reference, window_rms * 5)       # file level, not the quiet window
+        finally:
+            augment.mix_noise = original
 
     def test_augmented_dataset_keeps_window_position(self):
         cfg = {**CFG, "augment": {"enabled": True}}
